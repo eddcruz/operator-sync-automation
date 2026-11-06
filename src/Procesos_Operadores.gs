@@ -234,7 +234,14 @@ function revisarFaltantesOperador() {
         const ultimo = mensajes[mensajes.length - 1];
 
         const nombreBuscado = obtenerNombreOperador(primero, ultimo);
-        if (!nombreBuscado) return; // No parece consulta de operador: se ignora como antes
+        if (!nombreBuscado) {
+            // No se pudo leer el nombre: se avisa UNA vez y se etiqueta "Revisar"
+            const sinNombre = { estado: "sin_nombre" };
+            avisarRevision(thread, "(no se pudo leer)", sinNombre);
+            obtenerEtiqueta(CONFIG.ETIQUETA_REVISAR).addToThread(thread);
+            registrarBitacora(thread, "", sinNombre, "");
+            return;
+        }
 
         const textoCorreo = `${ultimo.getSubject() || ""}\n${primero.getPlainBody() || ""}`;
         const resultado = resolverConsulta(nombreBuscado, textoCorreo, catalogo, faltantes);
@@ -423,6 +430,9 @@ function avisarRevision(thread, nombreBuscado, resultado) {
         ? `<p>Hay <strong>varios operadores</strong> con ese nombre:</p><ul>` +
           resultado.candidatos.map(c => `<li>ID ${escaparHtml(c.id)} · ${escaparHtml(c.nombre)} · ${escaparHtml(c.rol)} · ${escaparHtml(c.estatus)}</li>`).join("") +
           `</ul>`
+        : resultado.estado === "sin_nombre"
+        ? `<p><strong>No pude leer el nombre del operador</strong> en el asunto ni en el cuerpo del correo.
+           Puede ser un formato nuevo; si se repite, se agrega a las reglas de lectura.</p>`
         : `<p><strong>No encontré</strong> a ningún operador con ese nombre ni en el catálogo ni en el historial.
            Puede ser un error al leer el nombre del correo, o un operador que no está registrado.</p>`;
 
@@ -457,7 +467,8 @@ function registrarBitacora(thread, nombreBuscado, resultado, destinatarios) {
         thread.getFirstMessageSubject(),
         nombreBuscado,
         resultado.estado === "ok" ? (resultado.filas.length ? "Respondido" : "Respondido: sin descuentos") :
-            resultado.estado === "ambiguo" ? "Revisar: varios operadores" : "Revisar: no encontrado",
+            resultado.estado === "ambiguo" ? "Revisar: varios operadores" :
+            resultado.estado === "sin_nombre" ? "Revisar: nombre no leído" : "Revisar: no encontrado",
         (resultado.ids || (resultado.candidatos || []).map(c => c.id)).join(", "),
         resultado.metodo || "",
         registros, cargo, exento,
@@ -513,6 +524,10 @@ function extraerNombreDeTexto(asunto, asuntoRaw, cuerpo) {
     m = asuntoRaw.match(/-\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ.\s]{6,})\s*$/i);
     if (m && m[1]) return limpiarNombreExtraido(m[1]);
 
+    // 2b) Asunto "... OP. NOMBRE" / "... OPERADOR NOMBRE" al final
+    m = asunto.match(/\b(?:OP|OPERADOR|COLABORADOR)\.?\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{6,})$/);
+    if (m && m[1]) return limpiarNombreExtraido(m[1]);
+
     // 3) Cuerpo con campos etiquetados
     m = cuerpo.match(/NOMBRE\s+(.+?)(?=\s+FECHA\s+DE\s+BAJA|\s+TIPO\s+DE\s+BAJA|\s+CAUSA\b|\s+SUB-CAUSA\b|$)/is);
     if (m && m[1]) return limpiarNombreExtraido(m[1]);
@@ -524,6 +539,10 @@ function extraerNombreDeTexto(asunto, asuntoRaw, cuerpo) {
 
     // 5) Cuerpo "del Operador NOMBRE"
     m = cuerpo.match(/OPERADOR\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ.\s]{8,})(?:,|\n|$)/i);
+    if (m && m[1]) return limpiarNombreExtraido(m[1]);
+
+    // 6) Cuerpo "del op. Nombre Apellido, quien..." / "del operador Nombre."
+    m = cuerpo.match(/\bDEL\s+OP(?:ERADOR)?\.?\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{6,}?)(?=\s*(?:,|\.|\n|\bQUIEN\b|$))/);
     if (m && m[1]) return limpiarNombreExtraido(m[1]);
 
     return null;

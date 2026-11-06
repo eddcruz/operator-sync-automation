@@ -65,7 +65,7 @@ operator-sync-automation/
 │   ├── Procesos_Operadores.gs   # Roster import, reconciliation, query replies
 │   └── Utilidades_Comunes.gs    # Name normalization, HTML, dates, money
 ├── Config.example.gs            # Template: every company-specific value lives here
-├── tests/run-tests.js           # 19 tests of the pure logic (fictitious data)
+├── tests/run-tests.js           # 22 tests of the pure logic (fictitious data)
 └── .github/workflows/tests.yml  # Runs the tests on every push
 ```
 

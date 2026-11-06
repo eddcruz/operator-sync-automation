@@ -49,6 +49,12 @@ t("subject 'Cuentas de colaborador/ NAME'",
 t("body table 'NOMBRE ... FECHA DE BAJA'",
   extraerNombreDeTexto("BAJA OP.", "Baja op.", "NOMBRE ANA MARIA RUIZ FECHA DE BAJA 8 DE NOVIEMBRE") === "ANA MARIA RUIZ");
 
+t("subject 'BAJA ... OP. NAME'",
+  extraerNombreDeTexto("BAJA EMPRESA CARGO OP. LUIS GERARDO MARTINEZ JAUREGUI", "Baja Empresa Cargo Op. Luis Gerardo Martinez Jauregui", "") === "LUIS GERARDO MARTINEZ JAUREGUI");
+t("body 'del op. Name, quien...'",
+  extraerNombreDeTexto("SALDOS", "Saldos", "SU APOYO CON LOS SALDOS DEL OP. LUIS GERARDO MARTÍNEZ JÁUREGUI, QUIEN SE ENCUENTRA EN PROCESO DE BAJA.") === "LUIS GERARDO MARTÍNEZ JÁUREGUI");
+t("no name anywhere → null (goes to review)", extraerNombreDeTexto("BAJA", "Baja", "BUEN DIA, ADJUNTO REPORTE.") === null);
+
 console.log("Bases");
 t("detects base in email text", detectarBase("OPERADOR BASE NORTE") === "NORTE");
 t("alias match is whole word only", detectarBase("NORTEÑO") === null);
