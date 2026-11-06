@@ -1,5 +1,7 @@
 # Operator Sync Automation
 
+[![tests](https://github.com/eddcruz/operator-sync-automation/actions/workflows/tests.yml/badge.svg)](https://github.com/eddcruz/operator-sync-automation/actions/workflows/tests.yml)
+
 Google Apps Script automation running in production at a logistics company: it keeps the operator roster in sync with HR's weekly list and answers HR's deduction queries by email — safely.
 
 ![Example automated reply (fictitious data)](docs/images/reply-example.png)
