@@ -1,135 +1,104 @@
-# 🔄 Operator Sync Automation
+# Operator Sync Automation
 
-Automated HR operator roster sync and deduction query responses via Gmail and Google Sheets.
+Google Apps Script automation running in production at a logistics company: it keeps the operator roster in sync with HR's weekly list and answers HR's deduction queries by email — safely.
 
-![Automation menu in Google Sheets](docs/images/menu-preview.png)
+![Example automated reply (fictitious data)](docs/images/reply-example.png)
 
-## 🎯 Problem Solved
+## Problem
 
-HR teams in logistics companies send weekly Excel rosters by email and receive 30+ daily queries asking for operator deduction details. Both processes were handled manually:
+Two manual, repetitive processes between HR and operations:
 
-- **Roster import**: downloading attachments, copy-pasting data, updating status — repeated weekly
-- **Deduction queries**: reading each email, looking up the operator, writing a reply — 5 min each, 30+ times/day
+- **Weekly roster:** HR emails an Excel file with the active operators. Someone had to download it, copy new operators into the catalog and mark who left.
+- **Deduction queries:** before paying a final settlement, HR emails asking for an operator's equipment deductions. 30+ queries a day, each answered by hand: find the operator, add up the records, reply to everyone.
 
-This system automates both workflows end-to-end from a single Google Sheets menu.
-
-## ⚡ Impact
+## Impact
 
 | Metric | Value |
-|--------|-------|
-| Deduction queries automated | 30+ / day |
-| Time freed per day | ~2.5 hours |
-| False deactivations prevented | 0 (safety threshold active) |
-| Manual data entry eliminated | 100% |
+|---|---|
+| Deduction queries answered automatically | 30+ per day |
+| Time freed | ~2.5 hours per day |
+| Typical reply time | under 5 minutes |
+| Manual roster data entry | eliminated |
 
-## 🏗️ Architecture
+## How it works
 
-```
-Gmail (HR email)
-    │
-    ▼
-processOperatorEmails()
-    ├── Download Excel attachment → Google Drive
-    ├── Convert → Google Sheets (temporary)
-    ├── Insert new operators (dedup by Employee ID)
-    ├── Collect active IDs
-    └── reconcileOperatorStatus()
-            ├── Active IDs ≥ threshold → mark Active/Inactive
-            └── Below threshold → alert email, skip reconciliation
+```mermaid
+flowchart LR
+    A[HR email<br>weekly Excel] --> B[Import new operators<br>dedup by ID]
+    B --> C{Reconciliation<br>guards}
+    C -->|ok| D[Active / Inactive<br>status updated]
+    C -->|suspicious list| E[Alert, no changes]
 
-Gmail (HR deduction query)
-    │
-    ▼
-checkOperatorDeductions()
-    ├── Extract operator name from subject/body
-    ├── Look up deduction records in sheet
-    ├── Build HTML summary table
-    └── replyAll() preserving original CC recipients
+    F[HR email<br>deduction query] --> G[Read operator name]
+    G --> H{Identify operator<br>in catalog}
+    H -->|unique| I[Records by ID<br>reply to all]
+    H -->|ambiguous / not found| J[No reply<br>alert for manual review]
+    I --> K[(Response log)]
+    J --> K
 ```
 
-## 📁 File Structure
+## Safety by design
+
+A wrong automatic reply means an operator is charged incorrectly, so the system prefers **not answering** over **answering wrong**:
+
+- **Identifies operators by ID, not by name.** The name in the email is matched against the catalog (accents, case and word order ignored) to get the operator ID; records are then pulled by ID.
+- **Namesakes:** if two operators share a name, the base mentioned in the email breaks the tie. If it is still ambiguous, it does **not** reply and sends an alert with the candidates.
+- **"No deductions" only when certain.** An incomplete or misspelled name never produces a "no deductions" reply; it goes to manual review.
+- **Exempt items are never added to the amount charged.** The reply shows the charge total and the exempt amount separately.
+- **Answered threads are never answered twice**, even when new messages arrive in the same thread.
+- **Roster guards:** reconciliation is skipped (with an alert) if the HR list has fewer than 20 IDs, or if it would deactivate more than 10% of active operators at once — the typical sign of an incomplete file.
+- **Test mode:** with `MODO_PRUEBA: true`, every reply goes only to the owner, marked `[PRUEBA]`, before switching to production.
+- **Response log:** every reply or review case is written to a sheet (operator ID, method, records, amounts).
+
+### Lesson learned
+
+The first version summed every movement into one total, including exempt items, so a reply could overstate the amount to deduct. Version 2 fixed the calculation, added the ID-based matching and guards above, and covered each rule with automated tests.
+
+## Project structure
 
 ```
 operator-sync-automation/
 ├── src/
-│   ├── Menu.gs            ← Custom Sheets menu
-│   ├── OperatorSync.gs    ← Main workflows
-│   └── Utils.gs           ← Name normalization, email parsing
-├── docs/
-│   └── images/
-│       └── menu-preview.png
-├── config.example.gs      ← Configuration template
-├── README.md
-└── LICENSE
+│   ├── Automatizacion_Menu.gs   # Custom menu in Google Sheets
+│   ├── Procesos_Operadores.gs   # Roster import, reconciliation, query replies
+│   └── Utilidades_Comunes.gs    # Name normalization, HTML, dates, money
+├── Config.example.gs            # Template: every company-specific value lives here
+├── tests/run-tests.js           # 19 tests of the pure logic (fictitious data)
+└── .github/workflows/tests.yml  # Runs the tests on every push
 ```
 
-## 🚀 Setup
+The code in `src/` is **identical** to the production code. Everything company-specific (emails, folder IDs, sheet and tab names, bases) lives in `Config.gs`, which is never committed. Code comments are in Spanish because the system runs in a Spanish-speaking operation.
 
-### Prerequisites
+## Setup
 
-- Google Workspace account (or personal Google account with Gmail + Drive)
-- Google Sheets spreadsheet with two tabs:
-  - `operators_catalog` — columns: `Operator_ID`, `Operator_Name`, `Position`, `Role`, `Status`
-  - `operator_missing_items` — columns: `Operator_Name`, `Movement_Type`, `Deduction_Concept`, `Total_Amount`, `Installments`
-- Advanced Drive API enabled in Apps Script
+1. Open your Google Sheet → **Extensions → Apps Script**.
+2. Create the three files from `src/` and paste their contents.
+3. Create a file named `Config`, paste `Config.example.gs` and fill in your values. Keep `MODO_PRUEBA: true`.
+4. **Services → Drive API** → Add.
+5. Reload the sheet: the **Automatización** menu appears.
+6. Triggers: `revisarFaltantesOperador` every 5 minutes; `procesarCorreosOperadores` weekly.
+7. Run `probarRespuestaFaltantes` (sends a reply only to you), review a few `[PRUEBA]` replies, then set `MODO_PRUEBA: false`.
 
-### Installation
+## Tests
 
-1. Open your Google Sheet → **Extensions → Apps Script**
-
-2. Create the following files and paste the contents from `src/`:
-   - `Menu.gs`
-   - `OperatorSync.gs`
-   - `Utils.gs`
-
-3. Create `config.gs` based on `config.example.gs` and fill in your values:
-
-```javascript
-const HR_SENDER_EMAIL    = "hr@yourcompany.com";
-const DRIVE_FOLDER_ID    = "YOUR_FOLDER_ID";
-const ALERTS_EMAIL       = "you@yourcompany.com";
-// ... see config.example.gs for full list
+```bash
+node tests/run-tests.js
 ```
 
-4. Enable **Drive API** under Services → Add a service → Drive API
+The tests load `Config.example.gs` and `src/` and check the rules that matter: name matching, namesakes, "no deductions" only when certain, exempt items excluded from totals, and the reconciliation guard.
 
-5. Save and reload the spreadsheet — the **Automation** menu will appear
+## Release process
 
-6. *(Optional)* Set up a time-based trigger to run `processOperatorEmails()` automatically (recommended: daily)
+`src/` is developed and tested here. To release, the three `src/` files are copied into the production Apps Script project; `Config.gs` is never touched, so no company data enters this repository.
 
-## ⚙️ Configuration Reference
+## Tech stack
 
-| Variable | Description |
-|----------|-------------|
-| `HR_SENDER_EMAIL` | Email that sends weekly roster attachments |
-| `HR_EMAIL_SUBJECT` | Subject keyword to identify roster emails |
-| `DEDUCTION_SENDERS` | Array of emails that send deduction queries |
-| `ALERTS_EMAIL` | Your email for notifications and auto-replies |
-| `DRIVE_FOLDER_ID` | Google Drive folder ID for Excel storage |
-| `OPERATORS_SHEET_NAME` | Sheet tab name for operator catalog |
-| `DEDUCTIONS_SHEET_NAME` | Sheet tab name for deduction records |
-| `HR_EXCEL_SHEETS` | Tab names inside the HR Excel attachments |
-| `MIN_ACTIVE_IDS_THRESHOLD` | Safety minimum to trigger reconciliation |
+Google Apps Script (V8) · Gmail · Google Drive API · Google Sheets · Node.js (tests) · GitHub Actions
 
-## 🛡️ Safety Features
-
-**Reconciliation threshold** — If the HR file contains fewer active IDs than `MIN_ACTIVE_IDS_THRESHOLD`, status reconciliation is skipped and an alert email is sent. Prevents mass-deactivation from incomplete files.
-
-**Duplicate detection** — Operators are matched by Employee ID before insertion. No duplicate rows are created even if the same file is processed twice.
-
-**CC preservation** — Auto-replies include all original recipients from the first message in the thread, maintaining the communication chain.
-
-## 🔧 Tech Stack
-
-- Google Apps Script
-- Gmail API
-- Google Drive API
-- Google Sheets
-
-## 📄 License
+## License
 
 MIT — see [LICENSE](LICENSE)
 
-## 👤 Author
+## Author
 
 Eduardo Cruz · [GitHub](https://github.com/eddcruz) · [LinkedIn](https://www.linkedin.com/in/eduardo-alejandro-cruz-castillo-a540b115a)

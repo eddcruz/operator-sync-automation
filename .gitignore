@@ -1,0 +1,11 @@
+# Real configuration with company data: never commit
+Config.gs
+config.gs
+
+# clasp local files
+.clasp.json
+.clasprc.json
+
+# Node / OS
+node_modules/
+.DS_Store
